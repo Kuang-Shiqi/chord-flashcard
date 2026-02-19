@@ -23,10 +23,18 @@ st.markdown("""
 <style>
   .main-title  { text-align:center; font-size:2rem; font-weight:700; margin-bottom:.2rem; }
   .key-label   { text-align:center; font-size:1.1rem; color:#888; margin-bottom:.5rem; }
+
+  /* ── Chord cards: horizontal scroll on mobile ── */
+  .cards-row {
+    display:flex; gap:.5rem; justify-content:center;
+    overflow-x:auto; -webkit-overflow-scrolling:touch;
+    padding:.3rem 0; scroll-snap-type:x mandatory;
+  }
   .chord-card  {
-    border:2px solid #e0e0e0; border-radius:12px; padding:.6rem .3rem .4rem;
+    border:2px solid #e0e0e0; border-radius:12px;
+    padding:.5rem .4rem .3rem; min-width:70px; flex-shrink:0;
     text-align:center; transition:border-color .15s, box-shadow .15s;
-    cursor:pointer; user-select:none;
+    cursor:pointer; user-select:none; scroll-snap-align:center;
   }
   .chord-card.active {
     border-color:#6366f1; box-shadow:0 0 0 3px rgba(99,102,241,.25);
@@ -35,6 +43,7 @@ st.markdown("""
   .chord-name  { font-size:2.2rem; font-weight:800; line-height:1.1; margin:0; }
   .chord-ans   { font-size:1.05rem; font-weight:700; color:#6366f1; min-height:1.5rem; margin:.2rem 0 0; }
   .chord-ans.empty { color:#cbd5e1; }
+
   .score-row   { display:flex;justify-content:center;gap:2.5rem;
                  font-size:1.05rem;margin-bottom:.3rem; }
   .score-val   { font-weight:700;font-size:1.35rem; }
@@ -42,22 +51,36 @@ st.markdown("""
   .timer-fill  { height:8px;border-radius:4px; }
   .fb-ok  { text-align:center;font-size:1.3rem;font-weight:700;color:#22c55e;padding:.3rem 0; }
   .fb-bad { text-align:center;font-size:1.3rem;font-weight:700;color:#ef4444;padding:.3rem 0; }
-  .deg-btn, .qual-btn {
-    display:inline-block; margin:3px; padding:.35rem .6rem;
-    border:2px solid #e2e8f0; border-radius:8px;
-    font-weight:700; font-size:1rem; cursor:pointer;
-    background:#f8fafc; transition:all .12s;
+
+  /* ── Button grids: wrap on mobile ── */
+  .btn-grid {
+    display:flex; flex-wrap:wrap; justify-content:center;
+    gap:6px; margin:.5rem auto; max-width:500px;
   }
-  .deg-btn:hover, .qual-btn:hover { background:#e0e7ff; border-color:#6366f1; }
-  .deg-btn.sel  { background:#6366f1; color:#fff; border-color:#6366f1; }
-  .qual-btn.sel { background:#818cf8; color:#fff; border-color:#818cf8; }
-  .btn-row { text-align:center; margin:.4rem 0; }
+  .btn-grid > div[data-testid="column"] { flex:0 0 auto !important; width:auto !important; }
   div[data-testid="stButton"] > button {
-    width:100%;font-size:1.05rem;font-weight:700;padding:.4rem 0;border-radius:8px;
+    font-size:1rem; font-weight:700; padding:.4rem .7rem; border-radius:8px;
+    white-space:nowrap;
   }
+
   .hint { font-size:.8rem;color:#94a3b8;text-align:center;margin-top:.2rem; }
   .fb-chord-ok  { color:#22c55e;font-weight:700;font-size:1rem;text-align:center; }
   .fb-chord-bad { color:#ef4444;font-weight:700;font-size:1rem;text-align:center; }
+
+  /* ── Mobile overrides ── */
+  @media (max-width: 600px) {
+    .chord-name  { font-size:1.5rem; }
+    .chord-card  { min-width:58px; padding:.4rem .25rem .2rem; }
+    .chord-ans   { font-size:.85rem; }
+    .score-row   { gap:1rem; font-size:.9rem; }
+    .score-val   { font-size:1.1rem; }
+    div[data-testid="stButton"] > button {
+      font-size:.85rem; padding:.35rem .45rem;
+    }
+    .hint { font-size:.7rem; }
+    .key-label { font-size:.95rem; }
+    .main-title { font-size:1.5rem; }
+  }
 </style>
 """, unsafe_allow_html=True)
 
@@ -401,75 +424,95 @@ elif st.session_state.screen == "playing":
     key_disp = format_key_display(prog[0][0])
     st.markdown(f'<p class="key-label">Key of {key_disp} Major</p>', unsafe_allow_html=True)
 
-    # ── Chord cards ──────────────────────────────────────────────────────────
+    # ── Chord cards (HTML flex row — scrollable on mobile) ─────────────────
     active = st.session_state.active_slot
-    cols = st.columns(len(prog))
-    for i, (col, (_, chord, _)) in enumerate(zip(cols, prog)):
+    cards_html = '<div class="cards-row">'
+    for i, (_, chord, _) in enumerate(prog):
+        rn  = slot_roman(i)
+        css = "chord-card" + (" active" if i == active else "") + \
+              (" filled" if rn else "")
+        ans_css = "chord-ans" if rn else "chord-ans empty"
+        ans_txt = rn if rn else "?"
+        cards_html += (
+            f'<div class="{css}">'
+            f'<p class="chord-name">{format_chord_display(chord)}</p>'
+            f'<p class="{ans_css}">{ans_txt}</p>'
+            f'</div>'
+        )
+    cards_html += '</div>'
+    st.markdown(cards_html, unsafe_allow_html=True)
+
+    # Focus slot buttons — compact row
+    focus_cols = st.columns(len(prog))
+    for i, col in enumerate(focus_cols):
         with col:
-            rn  = slot_roman(i)
-            css = "chord-card" + (" active" if i == active else "") + \
-                  (" filled" if rn else "")
-            ans_css = "chord-ans" if rn else "chord-ans empty"
-            ans_txt = rn if rn else "?"
-            # Clicking a card focuses it — we use a hidden button trick
-            st.markdown(
-                f'<div class="{css}" id="card_{i}">'
-                f'<p class="chord-name">{format_chord_display(chord)}</p>'
-                f'<p class="{ans_css}">{ans_txt}</p>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-            # invisible focus button
-            if st.button("📍", key=f"focus_{i}",
-                         use_container_width=True, help="Focus this slot"):
+            lbl = f"▸ {i+1}" if i != active else f"● {i+1}"
+            if st.button(lbl, key=f"focus_{i}", use_container_width=True):
                 st.session_state.active_slot = i
                 st.rerun()
 
-    # ── Degree buttons ───────────────────────────────────────────────────────
-    st.markdown('<div class="btn-row">', unsafe_allow_html=True)
+    # ── Degree buttons (row 1: 4, row 2: 3) ──────────────────────────────────
     deg_labels = ["I","II","III","IV","V","VI","VII"]
-    deg_cols = st.columns(7)
-    for d, (col, lbl) in enumerate(zip(deg_cols, deg_labels), 1):
-        with col:
+    row1_d = st.columns(4)
+    for d in range(1, 5):
+        with row1_d[d - 1]:
             cur_deg = st.session_state.slot_degrees[active]
             btn_type = "primary" if cur_deg == d else "secondary"
-            if st.button(lbl, key=f"deg_{d}", type=btn_type,
+            if st.button(deg_labels[d-1], key=f"deg_{d}", type=btn_type,
                          use_container_width=True):
                 set_degree(active, d)
                 st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+    row2_d = st.columns([1,1,1,1])
+    for idx, d in enumerate(range(5, 8)):
+        with row2_d[idx]:
+            cur_deg = st.session_state.slot_degrees[active]
+            btn_type = "primary" if cur_deg == d else "secondary"
+            if st.button(deg_labels[d-1], key=f"deg_{d}", type=btn_type,
+                         use_container_width=True):
+                set_degree(active, d)
+                st.rerun()
 
-    # ── Quality buttons ──────────────────────────────────────────────────────
-    st.markdown('<div class="btn-row">', unsafe_allow_html=True)
-    qual_cols = st.columns(len(QUALITIES))
-    for col, q in zip(qual_cols, QUALITIES):
-        with col:
+    st.markdown("<hr style='margin:.3rem 0;border-color:#e2e8f0'>", unsafe_allow_html=True)
+
+    # ── Quality buttons (row 1: 4, row 2: 3) ────────────────────────────────
+    row1_q = st.columns(4)
+    for idx, q in enumerate(QUALITIES[:4]):
+        with row1_q[idx]:
             cur_qual = st.session_state.slot_quals[active]
             btn_type = "primary" if cur_qual == q["id"] else "secondary"
             if st.button(q["label"], key=f"qual_{q['id']}", type=btn_type,
                          use_container_width=True):
                 set_quality(active, q["id"])
                 st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+    row2_q = st.columns([1,1,1,1])
+    for idx, q in enumerate(QUALITIES[4:]):
+        with row2_q[idx]:
+            cur_qual = st.session_state.slot_quals[active]
+            btn_type = "primary" if cur_qual == q["id"] else "secondary"
+            if st.button(q["label"], key=f"qual_{q['id']}", type=btn_type,
+                         use_container_width=True):
+                set_quality(active, q["id"])
+                st.rerun()
 
-    # ── Nav + Submit buttons (hidden, for keyboard JS to click) ──────────────
-    # These are visually shown as small utility buttons
-    st.markdown("<br>", unsafe_allow_html=True)
-    nc1, nc2, nc3, nc4, nc5 = st.columns([1,1,2,1,1])
-    with nc1:
+    # ── Nav + Submit ───────────────────────────────────────────────────────────
+    st.markdown("<hr style='margin:.3rem 0;border-color:#e2e8f0'>", unsafe_allow_html=True)
+    nav1, nav2, nav3 = st.columns([1,2,1])
+    with nav1:
         if st.button("◀ Prev", key="nav_prev", use_container_width=True):
             prev_slot(); st.rerun()
-    with nc2:
-        if st.button("Next ▶", key="nav_next", use_container_width=True):
-            advance_slot(); st.rerun()
-    with nc3:
+    with nav2:
         if st.button("Submit ↵ [Enter]", key="submit_main",
                      use_container_width=True, type="primary"):
             submit_answers(); st.rerun()
-    with nc4:
+    with nav3:
+        if st.button("Next ▶", key="nav_next", use_container_width=True):
+            advance_slot(); st.rerun()
+    # Hidden quality cycle buttons (for keyboard only)
+    hid1, hid2 = st.columns(2)
+    with hid1:
         if st.button("↑ Qual", key="nav_qual_up", use_container_width=True):
             cycle_quality(-1); st.rerun()
-    with nc5:
+    with hid2:
         if st.button("↓ Qual", key="nav_qual_down", use_container_width=True):
             cycle_quality(1); st.rerun()
 
@@ -505,22 +548,22 @@ elif st.session_state.screen == "feedback":
     else:
         st.markdown('<p class="fb-bad">✗ Wrong! −1</p>', unsafe_allow_html=True)
 
-    cols = st.columns(len(prog))
-    for i, (col, (_, chord, correct_rn)) in enumerate(zip(cols, prog)):
-        with col:
-            user_rn = slot_roman(i) or "—"
-            ok = user_rn == correct_rn
-            chord_disp = format_chord_display(chord)
-            fb_cls = "fb-chord-ok" if ok else "fb-chord-bad"
-            icon   = "✓" if ok else "✗"
-            detail = correct_rn if ok else f"{user_rn}<br><small>({correct_rn})</small>"
-            st.markdown(
-                f'<div style="text-align:center">'
-                f'<p class="chord-name">{chord_disp}</p>'
-                f'<p class="{fb_cls}">{icon} {detail}</p>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
+    fb_html = '<div class="cards-row">'
+    for i, (_, chord, correct_rn) in enumerate(prog):
+        user_rn = slot_roman(i) or "—"
+        ok = user_rn == correct_rn
+        chord_disp = format_chord_display(chord)
+        fb_cls = "fb-chord-ok" if ok else "fb-chord-bad"
+        icon   = "✓" if ok else "✗"
+        detail = correct_rn if ok else f"{user_rn}<br><small>({correct_rn})</small>"
+        fb_html += (
+            f'<div class="chord-card">'
+            f'<p class="chord-name">{chord_disp}</p>'
+            f'<p class="{fb_cls}">{icon} {detail}</p>'
+            f'</div>'
+        )
+    fb_html += '</div>'
+    st.markdown(fb_html, unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
     col = st.columns([1,2,1])[1]
