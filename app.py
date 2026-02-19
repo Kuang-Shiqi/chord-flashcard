@@ -191,7 +191,25 @@ def make_keyboard_js(screen):
     qual_labels_js = json.dumps([q["label"] for q in QUALITIES])
     qual_ids_js = json.dumps(QUALITY_IDS)
 
-    if screen == "playing":
+    if screen == "playing_quick":
+        # Quick mode: only 1-7 degree keys (buttons labelled "1"–"7")
+        action_js = """
+        function clickBtnByText(text) {
+            const btns = Array.from(window.parent.document.querySelectorAll('button'));
+            const b = btns.find(b => b.innerText.trim() === text);
+            if (b) b.click();
+        }
+        window.parent.document.addEventListener('keydown', function(e) {
+            if (window.parent.document.activeElement &&
+                window.parent.document.activeElement.tagName === 'INPUT') return;
+            const key = e.key;
+            if (key >= '1' && key <= '7') {
+                e.preventDefault();
+                clickBtnByText(key);
+            }
+        });
+        """
+    elif screen == "playing":
         action_js = f"""
         const DEG_MAP  = {inv_deg};
         const QUAL_MAP = {inv_qual};
@@ -398,19 +416,20 @@ elif st.session_state.screen == "playing":
                     st.rerun()
 
     if quick:
-        # ── Quick mode: 7 diatonic Roman numeral buttons (4+3 rows) ─────────
-        from music_theory import DIATONIC_PATTERN
-        quick_labels = [build_roman(d, q) for d, q in DIATONIC_PATTERN]
+        # ── Quick mode: 7 scale-degree buttons labelled 1–7 (4+3 rows) ─────
+        st.markdown(
+            '<p class="hint">Which scale degree is this chord? Press 1–7</p>',
+            unsafe_allow_html=True)
         row1_q = st.columns(4)
         for d in range(1, 5):
             with row1_q[d - 1]:
-                if st.button(quick_labels[d-1], key=f"deg_{d}", use_container_width=True):
+                if st.button(str(d), key=f"deg_{d}", use_container_width=True):
                     set_degree(active, d)
                     st.rerun()
         row2_q = st.columns([1,1,1,1])
         for idx, d in enumerate(range(5, 8)):
             with row2_q[idx]:
-                if st.button(quick_labels[d-1], key=f"deg_{d}", use_container_width=True):
+                if st.button(str(d), key=f"deg_{d}", use_container_width=True):
                     set_degree(active, d)
                     st.rerun()
     else:
@@ -479,13 +498,17 @@ elif st.session_state.screen == "playing":
             if st.button("↓ Qual", key="nav_qual_down", use_container_width=True):
                 cycle_quality(1); st.rerun()
 
-    st.markdown(
-        '<p class="hint">← → Space = move slots &nbsp;|&nbsp; '
-        '↑↓ = cycle quality &nbsp;|&nbsp; Enter = submit</p>',
-        unsafe_allow_html=True)
+    if not quick:
+        st.markdown(
+            '<p class="hint">← → Space = move slots &nbsp;|&nbsp; '
+            '↑↓ = cycle quality &nbsp;|&nbsp; Enter = submit</p>',
+            unsafe_allow_html=True)
 
-    # Inject keyboard JS
-    st.components.v1.html(make_keyboard_js("playing"), height=0)
+    # Inject keyboard JS (quick mode gets simplified version)
+    if quick:
+        st.components.v1.html(make_keyboard_js("playing_quick"), height=0)
+    else:
+        st.components.v1.html(make_keyboard_js("playing"), height=0)
 
     # auto-refresh for timer
     if st.session_state.timer_on:
