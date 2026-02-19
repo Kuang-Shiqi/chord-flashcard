@@ -249,16 +249,16 @@ def make_keyboard_js(screen):
 # ════════════════════════════════════════════════════════════════════════════
 if st.session_state.screen == "settings":
     st.markdown('<p class="main-title">🎵 Chord Flashcards</p>', unsafe_allow_html=True)
-    st.info("🖥️ Best experienced on desktop/laptop — keyboard shortcuts make it way faster!")
+    st.info("🖥️ Best on desktop — keyboard shortcuts make it way faster! On mobile? Try Quick Mode below.")
 
     # ── Quick mode button ────────────────────────────────────────────────────
     st.markdown(
         "<p style='text-align:center;color:#888;font-size:.95rem;margin-top:.5rem'>"
-        "Jump right in with a simplified version — one chord at a time, triads only, press 1–7 to answer."
+        "One chord at a time, triads only, press 1–7 to answer. Great for beginners and mobile!"
         "</p>", unsafe_allow_html=True)
     qcol = st.columns([1,2,1])[1]
     with qcol:
-        if st.button("⚡ Quick Mode (triads only)", use_container_width=True):
+        if st.button("⚡ Quick Mode (triads only)", use_container_width=True, type="primary"):
             st.session_state.use_triads = True
             st.session_state.use_sevenths = False
             st.session_state.prog_length = 1
@@ -385,79 +385,99 @@ elif st.session_state.screen == "playing":
     cards_html += '</div>'
     st.markdown(cards_html, unsafe_allow_html=True)
 
-    # Focus slot buttons
-    focus_cols = st.columns(len(prog))
-    for i, col in enumerate(focus_cols):
-        with col:
-            lbl = f"● {i+1}" if i == active else f"▸ {i+1}"
-            if st.button(lbl, key=f"focus_{i}", use_container_width=True):
-                st.session_state.active_slot = i
-                st.rerun()
+    quick = is_quick_mode()
 
-    # ── Degree buttons (row 1: 4, row 2: 3) ─────────────────────────────────
-    deg_labels = ["I","II","III","IV","V","VI","VII"]
-    row1_d = st.columns(4)
-    for d in range(1, 5):
-        with row1_d[d - 1]:
-            cur_deg = st.session_state.slot_degrees[active]
-            btn_type = "primary" if cur_deg == d else "secondary"
-            if st.button(deg_labels[d-1], key=f"deg_{d}", type=btn_type,
-                         use_container_width=True):
-                set_degree(active, d)
-                st.rerun()
-    row2_d = st.columns([1,1,1,1])
-    for idx, d in enumerate(range(5, 8)):
-        with row2_d[idx]:
-            cur_deg = st.session_state.slot_degrees[active]
-            btn_type = "primary" if cur_deg == d else "secondary"
-            if st.button(deg_labels[d-1], key=f"deg_{d}", type=btn_type,
-                         use_container_width=True):
-                set_degree(active, d)
-                st.rerun()
+    # Focus slot buttons (hide in quick mode — only 1 slot)
+    if not quick:
+        focus_cols = st.columns(len(prog))
+        for i, col in enumerate(focus_cols):
+            with col:
+                lbl = f"● {i+1}" if i == active else f"▸ {i+1}"
+                if st.button(lbl, key=f"focus_{i}", use_container_width=True):
+                    st.session_state.active_slot = i
+                    st.rerun()
 
-    st.markdown("<hr style='margin:.3rem 0;border-color:#e2e8f0'>", unsafe_allow_html=True)
+    if quick:
+        # ── Quick mode: 7 diatonic Roman numeral buttons (4+3 rows) ─────────
+        from music_theory import DIATONIC_PATTERN
+        quick_labels = [build_roman(d, q) for d, q in DIATONIC_PATTERN]
+        row1_q = st.columns(4)
+        for d in range(1, 5):
+            with row1_q[d - 1]:
+                if st.button(quick_labels[d-1], key=f"deg_{d}", use_container_width=True):
+                    set_degree(active, d)
+                    st.rerun()
+        row2_q = st.columns([1,1,1,1])
+        for idx, d in enumerate(range(5, 8)):
+            with row2_q[idx]:
+                if st.button(quick_labels[d-1], key=f"deg_{d}", use_container_width=True):
+                    set_degree(active, d)
+                    st.rerun()
+    else:
+        # ── Full mode: Degree buttons (row 1: 4, row 2: 3) ──────────────────
+        deg_labels = ["I","II","III","IV","V","VI","VII"]
+        row1_d = st.columns(4)
+        for d in range(1, 5):
+            with row1_d[d - 1]:
+                cur_deg = st.session_state.slot_degrees[active]
+                btn_type = "primary" if cur_deg == d else "secondary"
+                if st.button(deg_labels[d-1], key=f"deg_{d}", type=btn_type,
+                             use_container_width=True):
+                    set_degree(active, d)
+                    st.rerun()
+        row2_d = st.columns([1,1,1,1])
+        for idx, d in enumerate(range(5, 8)):
+            with row2_d[idx]:
+                cur_deg = st.session_state.slot_degrees[active]
+                btn_type = "primary" if cur_deg == d else "secondary"
+                if st.button(deg_labels[d-1], key=f"deg_{d}", type=btn_type,
+                             use_container_width=True):
+                    set_degree(active, d)
+                    st.rerun()
 
-    # ── Quality buttons (row 1: 4, row 2: 3) ────────────────────────────────
-    row1_q = st.columns(4)
-    for idx, q in enumerate(QUALITIES[:4]):
-        with row1_q[idx]:
-            cur_qual = st.session_state.slot_quals[active]
-            btn_type = "primary" if cur_qual == q["id"] else "secondary"
-            if st.button(q["label"], key=f"qual_{q['id']}", type=btn_type,
-                         use_container_width=True):
-                set_quality(active, q["id"])
-                st.rerun()
-    row2_q = st.columns([1,1,1,1])
-    for idx, q in enumerate(QUALITIES[4:]):
-        with row2_q[idx]:
-            cur_qual = st.session_state.slot_quals[active]
-            btn_type = "primary" if cur_qual == q["id"] else "secondary"
-            if st.button(q["label"], key=f"qual_{q['id']}", type=btn_type,
-                         use_container_width=True):
-                set_quality(active, q["id"])
-                st.rerun()
+        st.markdown("<hr style='margin:.3rem 0;border-color:#e2e8f0'>", unsafe_allow_html=True)
 
-    # ── Nav + Submit ────────────────────────────────────────────────────────
-    st.markdown("<hr style='margin:.3rem 0;border-color:#e2e8f0'>", unsafe_allow_html=True)
-    nav1, nav2, nav3 = st.columns([1,2,1])
-    with nav1:
-        if st.button("◀ Prev", key="nav_prev", use_container_width=True):
-            prev_slot(); st.rerun()
-    with nav2:
-        if st.button("Submit ↵", key="submit_main",
-                     use_container_width=True, type="primary"):
-            submit_answers(); st.rerun()
-    with nav3:
-        if st.button("Next ▶", key="nav_next", use_container_width=True):
-            advance_slot(); st.rerun()
-    # Quality cycle buttons (for keyboard ↑↓)
-    hid1, hid2 = st.columns(2)
-    with hid1:
-        if st.button("↑ Qual", key="nav_qual_up", use_container_width=True):
-            cycle_quality(-1); st.rerun()
-    with hid2:
-        if st.button("↓ Qual", key="nav_qual_down", use_container_width=True):
-            cycle_quality(1); st.rerun()
+        # ── Quality buttons (row 1: 4, row 2: 3) ────────────────────────────
+        row1_q = st.columns(4)
+        for idx, q in enumerate(QUALITIES[:4]):
+            with row1_q[idx]:
+                cur_qual = st.session_state.slot_quals[active]
+                btn_type = "primary" if cur_qual == q["id"] else "secondary"
+                if st.button(q["label"], key=f"qual_{q['id']}", type=btn_type,
+                             use_container_width=True):
+                    set_quality(active, q["id"])
+                    st.rerun()
+        row2_q = st.columns([1,1,1,1])
+        for idx, q in enumerate(QUALITIES[4:]):
+            with row2_q[idx]:
+                cur_qual = st.session_state.slot_quals[active]
+                btn_type = "primary" if cur_qual == q["id"] else "secondary"
+                if st.button(q["label"], key=f"qual_{q['id']}", type=btn_type,
+                             use_container_width=True):
+                    set_quality(active, q["id"])
+                    st.rerun()
+
+        # ── Nav + Submit ────────────────────────────────────────────────────
+        st.markdown("<hr style='margin:.3rem 0;border-color:#e2e8f0'>", unsafe_allow_html=True)
+        nav1, nav2, nav3 = st.columns([1,2,1])
+        with nav1:
+            if st.button("◀ Prev", key="nav_prev", use_container_width=True):
+                prev_slot(); st.rerun()
+        with nav2:
+            if st.button("Submit ↵", key="submit_main",
+                         use_container_width=True, type="primary"):
+                submit_answers(); st.rerun()
+        with nav3:
+            if st.button("Next ▶", key="nav_next", use_container_width=True):
+                advance_slot(); st.rerun()
+        # Quality cycle buttons (for keyboard ↑↓)
+        hid1, hid2 = st.columns(2)
+        with hid1:
+            if st.button("↑ Qual", key="nav_qual_up", use_container_width=True):
+                cycle_quality(-1); st.rerun()
+        with hid2:
+            if st.button("↓ Qual", key="nav_qual_down", use_container_width=True):
+                cycle_quality(1); st.rerun()
 
     st.markdown(
         '<p class="hint">← → Space = move slots &nbsp;|&nbsp; '
