@@ -122,6 +122,12 @@ def next_round_fn():
 def is_quick_mode():
     return st.session_state.get("quick_mode", False)
 
+def root_note(chord_name):
+    """Extract just the root note from a chord name, e.g. 'F#m7' -> 'F#', 'Bdim' -> 'B'."""
+    if len(chord_name) >= 2 and chord_name[1] in ('#', 'b'):
+        return chord_name[:2]
+    return chord_name[:1]
+
 # diatonic triad quality for each degree (1-indexed)
 DIATONIC_TRIAD_QUAL = {1:"maj",2:"min",3:"min",4:"maj",5:"maj",6:"min",7:"dim"}
 
@@ -261,10 +267,17 @@ def make_keyboard_js(screen):
 
     return f"<script>(function(){{ if(window._kbDone) return; window._kbDone=true; {action_js} }})();</script>"
 
+
+# ════════════════════════════════════════════════════════════════════════════
+# Use a single st.empty() placeholder so screen transitions fully replace DOM
+# ════════════════════════════════════════════════════════════════════════════
+_page = st.empty()
+
 # ════════════════════════════════════════════════════════════════════════════
 # SETTINGS SCREEN
 # ════════════════════════════════════════════════════════════════════════════
 if st.session_state.screen == "settings":
+  with _page.container():
     st.markdown('<p class="main-title">🎵 Chord Flashcards</p>', unsafe_allow_html=True)
     st.info("🖥️ Best on desktop — keyboard shortcuts make it way faster! On mobile? Try Quick Mode below.")
 
@@ -377,6 +390,7 @@ if st.session_state.screen == "settings":
 # PLAYING SCREEN
 # ════════════════════════════════════════════════════════════════════════════
 elif st.session_state.screen == "playing":
+  with _page.container():
     remaining = check_remaining()
     if st.session_state.timer_on and remaining <= 0:
         st.session_state.screen = "gameover"
@@ -391,21 +405,22 @@ elif st.session_state.screen == "playing":
 
     # ── Chord cards (HTML flex row) ──────────────────────────────────────────
     active = st.session_state.active_slot
+    quick = is_quick_mode()
     cards_html = '<div class="cards-row">'
     for i, (_, chord, _) in enumerate(prog):
         rn = slot_roman(i)
         css = "chord-card" + (" active" if i == active else "") + (" filled" if rn else "")
         ans_css = "chord-ans" if rn else "chord-ans empty"
         ans_txt = rn if rn else "?"
+        # Quick mode: show only root note (no quality), so user must figure out degree
+        display_name = format_chord_display(root_note(chord)) if quick else format_chord_display(chord)
         cards_html += (
             f'<div class="{css}">'
-            f'<p class="chord-name">{format_chord_display(chord)}</p>'
+            f'<p class="chord-name">{display_name}</p>'
             f'<p class="{ans_css}">{ans_txt}</p>'
             f'</div>')
     cards_html += '</div>'
     st.markdown(cards_html, unsafe_allow_html=True)
-
-    quick = is_quick_mode()
 
     # Focus slot buttons (hide in quick mode — only 1 slot)
     if not quick:
@@ -521,6 +536,7 @@ elif st.session_state.screen == "playing":
 # FEEDBACK SCREEN
 # ════════════════════════════════════════════════════════════════════════════
 elif st.session_state.screen == "feedback":
+  with _page.container():
     remaining = check_remaining()
     draw_timer_bar(remaining)
     draw_score_row(remaining)
@@ -535,6 +551,7 @@ elif st.session_state.screen == "feedback":
     else:
         st.markdown('<p class="fb-bad">✗ Wrong! −1</p>', unsafe_allow_html=True)
 
+    quick = is_quick_mode()
     fb_html = '<div class="cards-row">'
     for i, (_, chord, correct_rn) in enumerate(prog):
         user_rn = slot_roman(i) or "—"
@@ -542,9 +559,10 @@ elif st.session_state.screen == "feedback":
         fb_color = "#22c55e" if ok else "#ef4444"
         icon = "✓" if ok else "✗"
         detail = correct_rn if ok else f"{user_rn}<br><small>({correct_rn})</small>"
+        display_name = format_chord_display(root_note(chord)) if quick else format_chord_display(chord)
         fb_html += (
             f'<div class="chord-card">'
-            f'<p class="chord-name">{format_chord_display(chord)}</p>'
+            f'<p class="chord-name">{display_name}</p>'
             f'<p class="fb-chord-{("ok" if ok else "bad")}">{icon} {detail}</p>'
             f'</div>')
     fb_html += '</div>'
@@ -563,6 +581,7 @@ elif st.session_state.screen == "feedback":
 # GAME OVER SCREEN
 # ════════════════════════════════════════════════════════════════════════════
 elif st.session_state.screen == "gameover":
+  with _page.container():
     st.markdown('<p class="main-title">🎵 Chord Flashcards</p>', unsafe_allow_html=True)
     st.markdown("---")
     score = st.session_state.score
