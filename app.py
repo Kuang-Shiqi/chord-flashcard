@@ -60,6 +60,7 @@ def init_state():
     defaults = {
         "use_triads": True, "use_sevenths": True, "prog_length": 4,
         "timer_on": True, "timer_seconds": 60, "auto_advance": True,
+        "quick_mode": False,
         "degree_keys": dict(DEFAULT_DEGREE_KEYS),
         "quality_keys": dict(DEFAULT_QUALITY_KEYS),
         "screen": "settings",
@@ -119,9 +120,7 @@ def next_round_fn():
         new_round()
 
 def is_quick_mode():
-    return (st.session_state.prog_length == 1 and
-            st.session_state.use_triads and
-            not st.session_state.use_sevenths)
+    return st.session_state.get("quick_mode", False)
 
 # diatonic triad quality for each degree (1-indexed)
 DIATONIC_TRIAD_QUAL = {1:"maj",2:"min",3:"min",4:"maj",5:"maj",6:"min",7:"dim"}
@@ -276,15 +275,17 @@ if st.session_state.screen == "settings":
         "</p>", unsafe_allow_html=True)
     qcol = st.columns([1,2,1])[1]
     with qcol:
-        if st.button("⚡ Quick Mode (triads only)", use_container_width=True, type="primary"):
-            st.session_state.use_triads = True
-            st.session_state.use_sevenths = False
-            st.session_state.prog_length = 1
-            st.session_state.timer_on = True
-            st.session_state.timer_seconds = 60
-            st.session_state.auto_advance = True
-            start_game()
-            st.rerun()
+        quick_clicked = st.button("⚡ Quick Mode (triads only)", use_container_width=True, type="primary")
+    if quick_clicked:
+        st.session_state.quick_mode = True
+        st.session_state.use_triads = True
+        st.session_state.use_sevenths = False
+        st.session_state.prog_length = 1
+        st.session_state.timer_on = True
+        st.session_state.timer_seconds = 60
+        st.session_state.auto_advance = True
+        start_game()
+        st.rerun()
 
     st.markdown("---")
 
@@ -358,6 +359,7 @@ if st.session_state.screen == "settings":
     col = st.columns([1,2,1])[1]
     with col:
         if st.button("▶ Start Game", use_container_width=True, disabled=disabled):
+            st.session_state.quick_mode    = False
             st.session_state.use_triads    = use_triads
             st.session_state.use_sevenths  = use_sevenths
             st.session_state.prog_length   = prog_length
