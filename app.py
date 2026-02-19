@@ -1,88 +1,90 @@
 import time
+import json
 import streamlit as st
 from music_theory import (
-    build_pool,
-    get_progression,
-    format_key_display,
-    format_chord_display,
-    get_roman_options,
-    TRIAD_ROMANS,
-    SEVENTH_ROMANS,
+    build_pool, get_progression,
+    format_key_display, format_chord_display,
+    build_roman, QUALITIES, QUALITY_IDS,
 )
 
-GAME_DURATION = 60  # seconds
-
+# ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Chord Flashcards", page_icon="🎵", layout="centered")
 
-# ── CSS ─────────────────────────────────────────────────────────────────────
+# ── Default keybindings ───────────────────────────────────────────────────────
+DEFAULT_DEGREE_KEYS = {"1":"1","2":"2","3":"3","4":"4","5":"5","6":"6","7":"7"}
+DEFAULT_QUALITY_KEYS = {
+    "maj":"h", "min":"j", "dim":"k",
+    "maj7":"l", "dom7":";", "min7":"'", "hdim":"n",
+}
+DEFAULT_NAV_KEYS = {"prev":"ArrowLeft","next":"ArrowRight","qual_up":"ArrowUp","qual_down":"ArrowDown","submit":"Enter"}
+
+# ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-    .main-title    { text-align:center; font-size:2rem; font-weight:700; margin-bottom:0.2rem; }
-    .key-label     { text-align:center; font-size:1.15rem; color:#888; margin-bottom:0.6rem; }
-    .chord-name    { text-align:center; font-size:2.6rem; font-weight:800; line-height:1.1; }
-    .roman-correct { text-align:center; font-size:1.1rem; color:#22c55e; font-weight:700; min-height:1.6rem; }
-    .roman-wrong   { text-align:center; font-size:1.1rem; color:#ef4444; font-weight:700; min-height:1.6rem; }
-    .roman-pending { text-align:center; font-size:1.1rem; color:#888;    min-height:1.6rem; }
-    .score-row     { display:flex; justify-content:center; gap:2.5rem;
-                     font-size:1.05rem; margin-bottom:0.4rem; }
-    .score-val     { font-weight:700; font-size:1.35rem; }
-    .timer-bar     { height:8px; border-radius:4px; background:#e0e0e0; margin:0.3rem 0 0.8rem; }
-    .timer-fill    { height:8px; border-radius:4px; }
-    .fb-ok         { text-align:center; font-size:1.3rem; font-weight:700;
-                     color:#22c55e; padding:0.4rem 0; }
-    .fb-bad        { text-align:center; font-size:1.3rem; font-weight:700;
-                     color:#ef4444; padding:0.4rem 0; }
-    div[data-testid="stButton"] > button {
-        width:100%; font-size:1.1rem; font-weight:700;
-        padding:0.4rem 0; border-radius:8px;
-    }
-    /* tighten up text_input labels */
-    div[data-testid="stTextInput"] label { display:none; }
-    div[data-testid="stTextInput"] input {
-        text-align:center; font-size:1.1rem; font-weight:600;
-    }
+  .main-title  { text-align:center; font-size:2rem; font-weight:700; margin-bottom:.2rem; }
+  .key-label   { text-align:center; font-size:1.1rem; color:#888; margin-bottom:.5rem; }
+  .chord-card  {
+    border:2px solid #e0e0e0; border-radius:12px; padding:.6rem .3rem .4rem;
+    text-align:center; transition:border-color .15s, box-shadow .15s;
+    cursor:pointer; user-select:none;
+  }
+  .chord-card.active {
+    border-color:#6366f1; box-shadow:0 0 0 3px rgba(99,102,241,.25);
+  }
+  .chord-card.filled { border-color:#94a3b8; }
+  .chord-name  { font-size:2.2rem; font-weight:800; line-height:1.1; margin:0; }
+  .chord-ans   { font-size:1.05rem; font-weight:700; color:#6366f1; min-height:1.5rem; margin:.2rem 0 0; }
+  .chord-ans.empty { color:#cbd5e1; }
+  .score-row   { display:flex;justify-content:center;gap:2.5rem;
+                 font-size:1.05rem;margin-bottom:.3rem; }
+  .score-val   { font-weight:700;font-size:1.35rem; }
+  .timer-bar   { height:8px;border-radius:4px;background:#e0e0e0;margin:.3rem 0 .7rem; }
+  .timer-fill  { height:8px;border-radius:4px; }
+  .fb-ok  { text-align:center;font-size:1.3rem;font-weight:700;color:#22c55e;padding:.3rem 0; }
+  .fb-bad { text-align:center;font-size:1.3rem;font-weight:700;color:#ef4444;padding:.3rem 0; }
+  .deg-btn, .qual-btn {
+    display:inline-block; margin:3px; padding:.35rem .6rem;
+    border:2px solid #e2e8f0; border-radius:8px;
+    font-weight:700; font-size:1rem; cursor:pointer;
+    background:#f8fafc; transition:all .12s;
+  }
+  .deg-btn:hover, .qual-btn:hover { background:#e0e7ff; border-color:#6366f1; }
+  .deg-btn.sel  { background:#6366f1; color:#fff; border-color:#6366f1; }
+  .qual-btn.sel { background:#818cf8; color:#fff; border-color:#818cf8; }
+  .btn-row { text-align:center; margin:.4rem 0; }
+  div[data-testid="stButton"] > button {
+    width:100%;font-size:1.05rem;font-weight:700;padding:.4rem 0;border-radius:8px;
+  }
+  .hint { font-size:.8rem;color:#94a3b8;text-align:center;margin-top:.2rem; }
+  .fb-chord-ok  { color:#22c55e;font-weight:700;font-size:1rem;text-align:center; }
+  .fb-chord-bad { color:#ef4444;font-weight:700;font-size:1rem;text-align:center; }
 </style>
 """, unsafe_allow_html=True)
 
-# ── Spacebar submit via JS ───────────────────────────────────────────────────
-SPACEBAR_JS = """
-<script>
-(function() {
-    // avoid duplicate listeners
-    if (window._spaceListenerAdded) return;
-    window._spaceListenerAdded = true;
-    document.addEventListener('keydown', function(e) {
-        if (e.code === 'Space') {
-            // don't fire when user is typing in an input
-            if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
-            // find the submit / next button and click it
-            const btns = Array.from(document.querySelectorAll('button'));
-            const target = btns.find(b =>
-                b.innerText.includes('Submit') || b.innerText.includes('Next'));
-            if (target) { e.preventDefault(); target.click(); }
-        }
-    });
-})();
-</script>
-"""
-
-# ── Session state ────────────────────────────────────────────────────────────
+# ── Session state init ────────────────────────────────────────────────────────
 def init_state():
     defaults = {
         # settings
         "use_triads":    True,
         "use_sevenths":  True,
         "prog_length":   4,
-        # game lifecycle  "settings" | "playing" | "feedback" | "gameover"
+        "timer_on":      True,
+        "timer_seconds": 60,
+        "auto_advance":  True,
+        "degree_keys":   dict(DEFAULT_DEGREE_KEYS),
+        "quality_keys":  dict(DEFAULT_QUALITY_KEYS),
+        # screen: "settings" | "playing" | "feedback" | "gameover"
         "screen":        "settings",
-        # active round
-        "progression":   None,   # list of (key, chord, roman)
-        "user_answers":  [],     # list of str
+        # round state
+        "progression":   None,
+        "slot_degrees":  [],   # int or None per slot
+        "slot_quals":    [],   # quality_id or None per slot
+        "active_slot":   0,
         "start_time":    None,
         # totals
-        "score":         0,
-        "correct":       0,
-        "incorrect":     0,
+        "score":  0,
+        "correct":   0,
+        "incorrect": 0,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -90,7 +92,21 @@ def init_state():
 
 init_state()
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
+def slot_roman(i):
+    d = st.session_state.slot_degrees[i]
+    q = st.session_state.slot_quals[i]
+    if d is None:
+        return None
+    return build_roman(d, q if q else "maj")
+
+def slot_complete(i):
+    return (st.session_state.slot_degrees[i] is not None and
+            st.session_state.slot_quals[i] is not None)
+
+def all_slots_complete():
+    return all(slot_complete(i) for i in range(len(st.session_state.progression)))
+
 def start_game():
     st.session_state.score     = 0
     st.session_state.correct   = 0
@@ -101,21 +117,24 @@ def start_game():
 
 def new_round():
     pool = build_pool(st.session_state.use_triads, st.session_state.use_sevenths)
-    st.session_state.progression  = get_progression(pool, st.session_state.prog_length)
-    st.session_state.user_answers = [""] * st.session_state.prog_length
+    prog = get_progression(pool, st.session_state.prog_length)
+    st.session_state.progression  = prog
+    st.session_state.slot_degrees = [None] * len(prog)
+    st.session_state.slot_quals   = [None] * len(prog)
+    st.session_state.active_slot  = 0
 
-def check_time():
-    elapsed = time.time() - st.session_state.start_time
-    return max(0.0, GAME_DURATION - elapsed)
+def check_remaining():
+    if not st.session_state.timer_on:
+        return 999999
+    return max(0.0, st.session_state.timer_seconds - (time.time() - st.session_state.start_time))
 
 def submit_answers():
-    prog    = st.session_state.progression
-    answers = st.session_state.user_answers
-    correct_all = all(
-        ans.strip() == item[2]
-        for ans, item in zip(answers, prog)
+    prog = st.session_state.progression
+    all_ok = all(
+        slot_roman(i) == prog[i][2]
+        for i in range(len(prog))
     )
-    if correct_all:
+    if all_ok:
         st.session_state.score   += 1
         st.session_state.correct += 1
     else:
@@ -124,16 +143,47 @@ def submit_answers():
     st.session_state.screen = "feedback"
 
 def next_round():
-    remaining = check_time()
-    if remaining <= 0:
+    if st.session_state.timer_on and check_remaining() <= 0:
         st.session_state.screen = "gameover"
     else:
         st.session_state.screen = "playing"
         new_round()
 
-# ── Draw timer bar ───────────────────────────────────────────────────────────
-def draw_timer(remaining):
-    pct   = remaining / GAME_DURATION * 100
+def set_degree(i, deg):
+    st.session_state.slot_degrees[i] = deg
+    # auto-advance if both degree and quality are set
+    if st.session_state.auto_advance and st.session_state.slot_quals[i] is not None:
+        advance_slot()
+
+def set_quality(i, qual):
+    st.session_state.slot_quals[i] = qual
+    # auto-advance if both degree and quality are set
+    if st.session_state.auto_advance and st.session_state.slot_degrees[i] is not None:
+        advance_slot()
+
+def advance_slot():
+    n = len(st.session_state.progression)
+    nxt = st.session_state.active_slot + 1
+    if nxt < n:
+        st.session_state.active_slot = nxt
+
+def prev_slot():
+    prv = st.session_state.active_slot - 1
+    if prv >= 0:
+        st.session_state.active_slot = prv
+
+def cycle_quality(direction):
+    i = st.session_state.active_slot
+    cur = st.session_state.slot_quals[i]
+    idx = QUALITY_IDS.index(cur) if cur in QUALITY_IDS else 0
+    idx = (idx + direction) % len(QUALITY_IDS)
+    st.session_state.slot_quals[i] = QUALITY_IDS[idx]
+
+# ── Timer / score bar ─────────────────────────────────────────────────────────
+def draw_timer_bar(remaining):
+    if not st.session_state.timer_on:
+        return
+    pct   = remaining / st.session_state.timer_seconds * 100
     color = "#22c55e" if pct > 40 else ("#f59e0b" if pct > 20 else "#ef4444")
     st.markdown(
         f'<div class="timer-bar"><div class="timer-fill" '
@@ -141,17 +191,74 @@ def draw_timer(remaining):
         unsafe_allow_html=True,
     )
 
-def draw_score(remaining):
+def draw_score_row(remaining):
     s = st.session_state
+    timer_str = f"⏱ <span class='score-val'>{int(remaining)}s</span>" if s.timer_on else ""
     st.markdown(
         f'<div class="score-row">'
         f'<span>Score <span class="score-val">{s.score:+d}</span></span>'
-        f'<span>⏱ <span class="score-val">{int(remaining)}s</span></span>'
+        f'{timer_str}'
         f'<span>✓ <span class="score-val">{s.correct}</span> '
         f'✗ <span class="score-val">{s.incorrect}</span></span>'
         f'</div>',
         unsafe_allow_html=True,
     )
+
+# ── Keyboard JS ───────────────────────────────────────────────────────────────
+def make_keyboard_js(screen):
+    deg_map  = st.session_state.degree_keys   # {"1":"1", ...}
+    qual_map = st.session_state.quality_keys  # {"maj":"h", ...}
+    # invert: key_char -> degree int / quality_id
+    deg_js  = json.dumps({v: int(k) for k, v in deg_map.items()})
+    qual_js = json.dumps({v: k for k, v in qual_map.items()})
+    auto    = json.dumps(st.session_state.auto_advance)
+    n_slots = len(st.session_state.progression) if st.session_state.progression else 0
+
+    if screen == "playing":
+        action_js = f"""
+        const DEG_MAP  = {deg_js};
+        const QUAL_MAP = {qual_js};
+        const AUTO     = {auto};
+        const N        = {n_slots};
+
+        function clickBtn(text) {{
+            const btns = Array.from(document.querySelectorAll('button'));
+            const b = btns.find(b => b.innerText.trim() === text);
+            if (b) b.click();
+        }}
+        function clickDeg(d)  {{ clickBtn('deg_' + d); }}
+        function clickQual(q) {{ clickBtn('qual_' + q); }}
+
+        document.addEventListener('keydown', function(e) {{
+            if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+            const key = e.key;
+            // degree
+            if (DEG_MAP[key] !== undefined) {{ e.preventDefault(); clickDeg(DEG_MAP[key]); return; }}
+            // quality
+            if (QUAL_MAP[key] !== undefined) {{ e.preventDefault(); clickQual(QUAL_MAP[key]); return; }}
+            // navigation
+            if (key === 'ArrowLeft')  {{ e.preventDefault(); clickBtn('nav_prev'); return; }}
+            if (key === 'ArrowRight' || key === ' ') {{ e.preventDefault(); clickBtn('nav_next'); return; }}
+            if (key === 'ArrowUp')   {{ e.preventDefault(); clickBtn('nav_qual_up'); return; }}
+            if (key === 'ArrowDown') {{ e.preventDefault(); clickBtn('nav_qual_down'); return; }}
+            if (key === 'Enter')     {{ e.preventDefault(); clickBtn('submit_main'); return; }}
+        }});
+        """
+    elif screen == "feedback":
+        action_js = """
+        document.addEventListener('keydown', function(e) {
+            if (e.key === ' ' || e.key === 'Enter') {
+                e.preventDefault();
+                const btns = Array.from(document.querySelectorAll('button'));
+                const b = btns.find(b => b.innerText.includes('Next') || b.innerText.includes('Results'));
+                if (b) b.click();
+            }
+        });
+        """
+    else:
+        action_js = ""
+
+    return f"<script>(function(){{ if(window._kbDone) return; window._kbDone=true; {action_js} }})();</script>"
 
 # ════════════════════════════════════════════════════════════════════════════
 # SETTINGS SCREEN
@@ -160,153 +267,255 @@ if st.session_state.screen == "settings":
     st.markdown('<p class="main-title">🎵 Chord Flashcards</p>', unsafe_allow_html=True)
     st.markdown("---")
 
-    st.subheader("Game Settings")
+    # ── Chord types ──
+    st.subheader("Chord Types")
+    c1, c2 = st.columns(2)
+    use_triads   = c1.checkbox("Triads  (I ii iii …)",      value=st.session_state.use_triads)
+    use_sevenths = c2.checkbox("7th chords  (Imaj7 V7 …)",  value=st.session_state.use_sevenths)
 
-    st.markdown("**Chord types to include:**")
-    col1, col2 = st.columns(2)
-    with col1:
-        use_triads = st.checkbox("Triads  (I, ii, iii …)", value=st.session_state.use_triads)
-    with col2:
-        use_sevenths = st.checkbox("7th chords  (Imaj7, V7 …)", value=st.session_state.use_sevenths)
+    # ── Progression length ──
+    st.subheader("Progression Length")
+    prog_length = st.slider("Chords per round", 2, 8, st.session_state.prog_length,
+                            label_visibility="collapsed")
 
-    st.markdown("**Progression length:**")
-    prog_length = st.slider(
-        "Number of chords per round",
-        min_value=2, max_value=8,
-        value=st.session_state.prog_length,
+    # ── Timer ──
+    st.subheader("Timer")
+    tc1, tc2 = st.columns([1, 3])
+    timer_on = tc1.checkbox("Enable timer", value=st.session_state.timer_on)
+    timer_seconds = tc2.slider(
+        "Duration (seconds)", 30, 600,
+        st.session_state.timer_seconds, 30,
+        format="%d s",
+        disabled=not timer_on,
         label_visibility="collapsed",
     )
 
-    st.markdown("---")
-    st.markdown(
-        "<p style='text-align:center;color:#aaa;font-size:0.95rem'>"
-        "A chord progression will appear — enter the Roman numeral for each chord.<br>"
-        "<b>+1</b> whole progression correct &nbsp;|&nbsp; "
-        "<b>−1</b> any wrong &nbsp;|&nbsp; "
-        "<b>60 seconds</b> &nbsp;|&nbsp; "
-        "<b>Space</b> = quick submit"
-        "</p>",
-        unsafe_allow_html=True,
+    # ── Auto-advance ──
+    st.subheader("Auto-advance")
+    auto_advance = st.checkbox(
+        "Automatically move to next slot when degree + quality are both selected",
+        value=st.session_state.auto_advance,
     )
 
-    center = st.columns([1, 2, 1])[1]
-    with center:
-        disabled = not (use_triads or use_sevenths)
-        if st.button("▶ Start Game", use_container_width=True, disabled=disabled):
-            st.session_state.use_triads   = use_triads
-            st.session_state.use_sevenths = use_sevenths
-            st.session_state.prog_length  = prog_length
-            start_game()
+    # ── Keybinds ──
+    st.subheader("Keybindings")
+    with st.expander("Customise keybindings", expanded=False):
+        st.markdown("**Degree keys** (what you press to select scale degree 1–7):")
+        dk = dict(st.session_state.degree_keys)
+        dcols = st.columns(7)
+        for idx, (deg, _) in enumerate(DEFAULT_DEGREE_KEYS.items()):
+            with dcols[idx]:
+                dk[deg] = st.text_input(
+                    f"Deg {deg}", value=dk[deg], max_chars=1, key=f"dk_{deg}"
+                )
+
+        st.markdown("**Quality keys:**")
+        qk = dict(st.session_state.quality_keys)
+        for q in QUALITIES:
+            qk[q["id"]] = st.text_input(
+                f"{q['label']} ({build_roman(1, q['id'])})",
+                value=qk[q["id"]], max_chars=1, key=f"qk_{q['id']}"
+            )
+
+        if st.button("Reset keybindings to default"):
+            st.session_state.degree_keys  = dict(DEFAULT_DEGREE_KEYS)
+            st.session_state.quality_keys = dict(DEFAULT_QUALITY_KEYS)
             st.rerun()
 
+    # ── How to play ──
+    with st.expander("How to play / keybind cheatsheet", expanded=False):
+        dk = st.session_state.degree_keys
+        qk = st.session_state.quality_keys
+        st.markdown(f"""
+**Goal:** Identify the Roman numeral for each chord in the progression.
+Score **+1** if the whole progression is correct, **−1** if any chord is wrong.
+
+**Navigating slots:**
+- `←` / `→` — move between chord slots
+- `Space` — advance to next slot
+- Click a chord card to focus it
+
+**Entering a chord:**
+1. Press a **degree key** → sets the scale degree
+2. Press a **quality key** → sets the chord type (auto-advances if enabled)
+
+| Degree | Key | &nbsp;&nbsp; | Quality | Key | Result (deg 5) |
+|--------|-----|---|---------|-----|----------------|
+| I | `{dk['1']}` | | maj (triad) | `{qk['maj']}` | V |
+| II | `{dk['2']}` | | min (triad) | `{qk['min']}` | v |
+| III | `{dk['3']}` | | dim | `{qk['dim']}` | v° |
+| IV | `{dk['4']}` | | maj7 | `{qk['maj7']}` | Vmaj7 |
+| V | `{dk['5']}` | | dom 7 | `{qk['dom7']}` | V7 |
+| VI | `{dk['6']}` | | min 7 | `{qk['min7']}` | v7 |
+| VII | `{dk['7']}` | | half-dim | `{qk['hdim']}` | vø7 |
+
+**↑ / ↓** — cycle quality up/down on focused slot
+**Enter** — submit the whole progression
+""")
+
+    st.markdown("---")
+    disabled = not (use_triads or use_sevenths)
+    col = st.columns([1,2,1])[1]
+    with col:
+        if st.button("▶ Start Game", use_container_width=True, disabled=disabled):
+            st.session_state.use_triads    = use_triads
+            st.session_state.use_sevenths  = use_sevenths
+            st.session_state.prog_length   = prog_length
+            st.session_state.timer_on      = timer_on
+            st.session_state.timer_seconds = timer_seconds
+            st.session_state.auto_advance  = auto_advance
+            st.session_state.degree_keys   = dk
+            st.session_state.quality_keys  = qk
+            start_game()
+            st.rerun()
     if disabled:
-        st.warning("Please select at least one chord type.")
+        st.warning("Select at least one chord type.")
 
 # ════════════════════════════════════════════════════════════════════════════
 # PLAYING SCREEN
 # ════════════════════════════════════════════════════════════════════════════
 elif st.session_state.screen == "playing":
-    st.components.v1.html(SPACEBAR_JS, height=0)
-
-    remaining = check_time()
-    if remaining <= 0:
+    remaining = check_remaining()
+    if st.session_state.timer_on and remaining <= 0:
         st.session_state.screen = "gameover"
         st.rerun()
 
-    draw_timer(remaining)
-    draw_score(remaining)
+    draw_timer_bar(remaining)
+    draw_score_row(remaining)
 
     prog = st.session_state.progression
     key_disp = format_key_display(prog[0][0])
     st.markdown(f'<p class="key-label">Key of {key_disp} Major</p>', unsafe_allow_html=True)
 
-    # Chord names row
+    # ── Chord cards ──────────────────────────────────────────────────────────
+    active = st.session_state.active_slot
     cols = st.columns(len(prog))
-    for col, (_, chord, _) in zip(cols, prog):
+    for i, (col, (_, chord, _)) in enumerate(zip(cols, prog)):
         with col:
+            rn  = slot_roman(i)
+            css = "chord-card" + (" active" if i == active else "") + \
+                  (" filled" if rn else "")
+            ans_css = "chord-ans" if rn else "chord-ans empty"
+            ans_txt = rn if rn else "?"
+            # Clicking a card focuses it — we use a hidden button trick
             st.markdown(
-                f'<p class="chord-name">{format_chord_display(chord)}</p>',
+                f'<div class="{css}" id="card_{i}">'
+                f'<p class="chord-name">{format_chord_display(chord)}</p>'
+                f'<p class="{ans_css}">{ans_txt}</p>'
+                f'</div>',
                 unsafe_allow_html=True,
             )
+            # invisible focus button
+            if st.button(f"focus_{i}", key=f"focus_{i}",
+                         label_visibility="hidden"):
+                st.session_state.active_slot = i
+                st.rerun()
 
-    # Input boxes row
-    answers = list(st.session_state.user_answers)
-    input_cols = st.columns(len(prog))
-    for i, col in enumerate(input_cols):
+    # ── Degree buttons ───────────────────────────────────────────────────────
+    st.markdown('<div class="btn-row">', unsafe_allow_html=True)
+    deg_labels = ["I","II","III","IV","V","VI","VII"]
+    deg_cols = st.columns(7)
+    for d, (col, lbl) in enumerate(zip(deg_cols, deg_labels), 1):
         with col:
-            answers[i] = st.text_input(
-                f"ans_{i}",
-                value=answers[i],
-                key=f"inp_{i}",
-                placeholder="?",
-                label_visibility="collapsed",
-            )
-    st.session_state.user_answers = answers
+            cur_deg = st.session_state.slot_degrees[active]
+            btn_type = "primary" if cur_deg == d else "secondary"
+            if st.button(lbl, key=f"deg_{d}", type=btn_type,
+                         use_container_width=True):
+                set_degree(active, d)
+                st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
+    # ── Quality buttons ──────────────────────────────────────────────────────
+    st.markdown('<div class="btn-row">', unsafe_allow_html=True)
+    qual_cols = st.columns(len(QUALITIES))
+    for col, q in zip(qual_cols, QUALITIES):
+        with col:
+            cur_qual = st.session_state.slot_quals[active]
+            btn_type = "primary" if cur_qual == q["id"] else "secondary"
+            if st.button(q["label"], key=f"qual_{q['id']}", type=btn_type,
+                         use_container_width=True):
+                set_quality(active, q["id"])
+                st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # ── Nav + Submit buttons (hidden, for keyboard JS to click) ──────────────
+    # These are visually shown as small utility buttons
     st.markdown("<br>", unsafe_allow_html=True)
-    center = st.columns([1, 2, 1])[1]
-    with center:
-        if st.button("Submit ↵", use_container_width=True, key="submit_btn"):
-            submit_answers()
-            st.rerun()
+    nc1, nc2, nc3, nc4, nc5 = st.columns([1,1,2,1,1])
+    with nc1:
+        if st.button("◀ Prev", key="nav_prev", use_container_width=True):
+            prev_slot(); st.rerun()
+    with nc2:
+        if st.button("Next ▶", key="nav_next", use_container_width=True):
+            advance_slot(); st.rerun()
+    with nc3:
+        if st.button("Submit ↵ [Enter]", key="submit_main",
+                     use_container_width=True, type="primary"):
+            submit_answers(); st.rerun()
+    with nc4:
+        if st.button("↑ Qual", key="nav_qual_up", use_container_width=True):
+            cycle_quality(-1); st.rerun()
+    with nc5:
+        if st.button("↓ Qual", key="nav_qual_down", use_container_width=True):
+            cycle_quality(1); st.rerun()
 
-    # auto-refresh timer
-    time.sleep(1)
-    st.rerun()
+    st.markdown(
+        '<p class="hint">← → Space = move slots &nbsp;|&nbsp; '
+        '↑↓ = cycle quality &nbsp;|&nbsp; Enter = submit</p>',
+        unsafe_allow_html=True,
+    )
+
+    # Inject keyboard JS
+    st.components.v1.html(make_keyboard_js("playing"), height=0)
+
+    # auto-refresh for timer
+    if st.session_state.timer_on:
+        time.sleep(1)
+        st.rerun()
 
 # ════════════════════════════════════════════════════════════════════════════
 # FEEDBACK SCREEN
 # ════════════════════════════════════════════════════════════════════════════
 elif st.session_state.screen == "feedback":
-    st.components.v1.html(SPACEBAR_JS, height=0)
-
-    remaining = check_time()
-    draw_timer(remaining)
-    draw_score(remaining)
+    remaining = check_remaining()
+    draw_timer_bar(remaining)
+    draw_score_row(remaining)
 
     prog    = st.session_state.progression
-    answers = st.session_state.user_answers
     key_disp = format_key_display(prog[0][0])
     st.markdown(f'<p class="key-label">Key of {key_disp} Major</p>', unsafe_allow_html=True)
 
-    # Determine overall result
-    all_ok = all(ans.strip() == item[2] for ans, item in zip(answers, prog))
+    all_ok = all(slot_roman(i) == prog[i][2] for i in range(len(prog)))
     if all_ok:
         st.markdown('<p class="fb-ok">✓ Correct! +1</p>', unsafe_allow_html=True)
     else:
         st.markdown('<p class="fb-bad">✗ Wrong! −1</p>', unsafe_allow_html=True)
 
-    # Per-chord feedback columns
     cols = st.columns(len(prog))
-    for col, (_, chord, correct_roman), user_ans in zip(cols, prog, answers):
+    for i, (col, (_, chord, correct_rn)) in enumerate(zip(cols, prog)):
         with col:
+            user_rn = slot_roman(i) or "—"
+            ok = user_rn == correct_rn
             chord_disp = format_chord_display(chord)
+            fb_cls = "fb-chord-ok" if ok else "fb-chord-bad"
+            icon   = "✓" if ok else "✗"
+            detail = correct_rn if ok else f"{user_rn}<br><small>({correct_rn})</small>"
             st.markdown(
-                f'<p class="chord-name">{chord_disp}</p>',
+                f'<div style="text-align:center">'
+                f'<p class="chord-name">{chord_disp}</p>'
+                f'<p class="{fb_cls}">{icon} {detail}</p>'
+                f'</div>',
                 unsafe_allow_html=True,
             )
-            user_clean = user_ans.strip()
-            if user_clean == correct_roman:
-                st.markdown(
-                    f'<p class="roman-correct">✓ {correct_roman}</p>',
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.markdown(
-                    f'<p class="roman-wrong">'
-                    f'✗ {user_clean or "—"}<br>'
-                    f'<span style="font-size:0.85rem">({correct_roman})</span>'
-                    f'</p>',
-                    unsafe_allow_html=True,
-                )
 
     st.markdown("<br>", unsafe_allow_html=True)
-    center = st.columns([1, 2, 1])[1]
-    with center:
-        lbl = "▶ Next  [Space]" if remaining > 0 else "See Results"
-        if st.button(lbl, use_container_width=True, key="next_btn"):
-            next_round()
-            st.rerun()
+    col = st.columns([1,2,1])[1]
+    with col:
+        lbl = "▶ Next [Space/Enter]" if (not st.session_state.timer_on or remaining > 0) else "See Results"
+        if st.button(lbl, key="next_btn", use_container_width=True, type="primary"):
+            next_round(); st.rerun()
+
+    st.components.v1.html(make_keyboard_js("feedback"), height=0)
 
 # ════════════════════════════════════════════════════════════════════════════
 # GAME OVER SCREEN
@@ -314,7 +523,6 @@ elif st.session_state.screen == "feedback":
 elif st.session_state.screen == "gameover":
     st.markdown('<p class="main-title">🎵 Chord Flashcards</p>', unsafe_allow_html=True)
     st.markdown("---")
-
     score = st.session_state.score
     emoji = "🎉" if score > 0 else ("😐" if score == 0 else "😬")
     st.markdown(
@@ -322,19 +530,15 @@ elif st.session_state.screen == "gameover":
         f"Time's up! {emoji}</p>",
         unsafe_allow_html=True,
     )
-
     c1, c2, c3 = st.columns(3)
-    c1.metric("Final Score", f"{score:+d}")
-    c2.metric("Correct ✓",  st.session_state.correct)
+    c1.metric("Final Score",  f"{score:+d}")
+    c2.metric("Correct ✓",   st.session_state.correct)
     c3.metric("Incorrect ✗", st.session_state.incorrect)
-
     st.markdown("---")
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("🔄 Play Again (same settings)", use_container_width=True):
-            start_game()
-            st.rerun()
-    with col2:
+    b1, b2 = st.columns(2)
+    with b1:
+        if st.button("🔄 Play Again", use_container_width=True, type="primary"):
+            start_game(); st.rerun()
+    with b2:
         if st.button("⚙️ Change Settings", use_container_width=True):
-            st.session_state.screen = "settings"
-            st.rerun()
+            st.session_state.screen = "settings"; st.rerun()
