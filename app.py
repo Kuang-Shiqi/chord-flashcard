@@ -221,35 +221,49 @@ def make_keyboard_js(screen):
         const AUTO     = {auto};
         const N        = {n_slots};
 
-        function clickBtn(text) {{
-            const btns = Array.from(document.querySelectorAll('button'));
+        const DEG_LABELS  = ['I','II','III','IV','V','VI','VII'];
+        const QUAL_LABELS = {json.dumps([q["label"] for q in QUALITIES])};
+
+        function clickBtnByText(text) {{
+            const btns = Array.from(
+                window.parent.document.querySelectorAll('button'));
             const b = btns.find(b => b.innerText.trim() === text);
             if (b) b.click();
         }}
-        function clickDeg(d)  {{ clickBtn('deg_' + d); }}
-        function clickQual(q) {{ clickBtn('qual_' + q); }}
 
-        document.addEventListener('keydown', function(e) {{
+        window.parent.document.addEventListener('keydown', function(e) {{
             if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+            if (window.parent.document.activeElement &&
+                window.parent.document.activeElement.tagName === 'INPUT') return;
             const key = e.key;
-            // degree
-            if (DEG_MAP[key] !== undefined) {{ e.preventDefault(); clickDeg(DEG_MAP[key]); return; }}
-            // quality
-            if (QUAL_MAP[key] !== undefined) {{ e.preventDefault(); clickQual(QUAL_MAP[key]); return; }}
+            // degree: press 1-7 -> click button labeled I-VII
+            if (DEG_MAP[key] !== undefined) {{
+                e.preventDefault();
+                clickBtnByText(DEG_LABELS[DEG_MAP[key] - 1]);
+                return;
+            }}
+            // quality: press h,j,k... -> click button labeled maj,min,dim...
+            if (QUAL_MAP[key] !== undefined) {{
+                e.preventDefault();
+                const qid = QUAL_MAP[key];
+                const qIdx = {json.dumps(QUALITY_IDS)}.indexOf(qid);
+                if (qIdx >= 0) clickBtnByText(QUAL_LABELS[qIdx]);
+                return;
+            }}
             // navigation
-            if (key === 'ArrowLeft')  {{ e.preventDefault(); clickBtn('nav_prev'); return; }}
-            if (key === 'ArrowRight' || key === ' ') {{ e.preventDefault(); clickBtn('nav_next'); return; }}
-            if (key === 'ArrowUp')   {{ e.preventDefault(); clickBtn('nav_qual_up'); return; }}
-            if (key === 'ArrowDown') {{ e.preventDefault(); clickBtn('nav_qual_down'); return; }}
-            if (key === 'Enter')     {{ e.preventDefault(); clickBtn('submit_main'); return; }}
+            if (key === 'ArrowLeft')  {{ e.preventDefault(); clickBtnByText('\u25c0 Prev'); return; }}
+            if (key === 'ArrowRight' || key === ' ') {{ e.preventDefault(); clickBtnByText('Next \u25b6'); return; }}
+            if (key === 'ArrowUp')   {{ e.preventDefault(); clickBtnByText('\u2191 Qual'); return; }}
+            if (key === 'ArrowDown') {{ e.preventDefault(); clickBtnByText('\u2193 Qual'); return; }}
+            if (key === 'Enter')     {{ e.preventDefault(); clickBtnByText('Submit \u21b5 [Enter]'); return; }}
         }});
         """
     elif screen == "feedback":
         action_js = """
-        document.addEventListener('keydown', function(e) {
+        window.parent.document.addEventListener('keydown', function(e) {
             if (e.key === ' ' || e.key === 'Enter') {
                 e.preventDefault();
-                const btns = Array.from(document.querySelectorAll('button'));
+                const btns = Array.from(window.parent.document.querySelectorAll('button'));
                 const b = btns.find(b => b.innerText.includes('Next') || b.innerText.includes('Results'));
                 if (b) b.click();
             }
@@ -406,8 +420,8 @@ elif st.session_state.screen == "playing":
                 unsafe_allow_html=True,
             )
             # invisible focus button
-            if st.button(f"focus_{i}", key=f"focus_{i}",
-                         label_visibility="hidden"):
+            if st.button("📍", key=f"focus_{i}",
+                         use_container_width=True, help="Focus this slot"):
                 st.session_state.active_slot = i
                 st.rerun()
 
